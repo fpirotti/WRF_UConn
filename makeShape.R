@@ -73,6 +73,7 @@ processPoints<-function(points, radius=NULL, rot=0, crs=NULL){
   }
   if( is.matrix(points) || is.data.frame(points)  ){
     if(ncol(points) !=2) stop("2 column data frame or matrix is expected")
+    names(points)<-tolower(names(points))
     if(sum(names(points)%in%c("y", "x"))!=2 ) stop("Column names have to be x and y!")
   }
  
