@@ -3,7 +3,8 @@ library(sf)
 library(sp)
 
 source("makeShape.R")
-
+rad2deg<-function(rad){ rad*180/pi}
+deg2rad<-function(deg){ deg/180*pi}
 cell_width<-500
 wfolder<-"/archivio/shared/geodati/vettoriali/vaia/Cerrai_WRF_grid/"
 # 
@@ -16,16 +17,21 @@ wfolder<-"/archivio/shared/geodati/vettoriali/vaia/Cerrai_WRF_grid/"
 # coordinates(nodes.sp) <-  ~x+y
 # crs(nodes.sp)<-CRS("+init=epsg:4326")
 # saveRDS(nodes.sp, "nodes.sp")
-
+ 
 nodes.sp<-readRDS("nodes.sp")
 centroids<-as.data.frame(nodes.sp@coords[1:20,])
-radius<-10
+radius<-500
 points<-as.data.frame(nodes.sp@coords)
 
-squares<-processPoints(points, 500 )
+degr<-1.2065 
+squares<-processPoints(points , 500, rot = deg2rad(degr)  )
 crs(squares)<-CRS("+init=epsg:3034")
-shapefile(squares, "nodes.square.projected.shp", overwrite=T)
+shapefile(squares, sprintf("nodes.square.projected.rotated_%sdeg.shp", degr) , overwrite=T)
+ 
 
+squares.latlng<- spTransform(squares, CRS("+init=epsg:4326"))
+shapefile(squares, sprintf("nodes.square.latlng.rotated_%sdeg.shp", degr) , overwrite=T)
+ 
 
 # nodes.coords <-  as.data.frame(st_coordinates( nodes.projected))
 # names(nodes.coords)<-c("x", "y")
