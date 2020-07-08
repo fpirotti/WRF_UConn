@@ -2,3 +2,5 @@
 .Rhistory
 .RData
 .Ruserdata
+nodes.hex.latlng
+nodes.hex.projected
