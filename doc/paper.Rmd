@@ -1,0 +1,92 @@
+---
+title: "Processing Nodes 4 VAIA"
+author: "Francesco Pirotti"
+date: "11/7/2020"
+output:
+  html_document: 
+    toc: true 
+    toc_float: true
+---
+ 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Some stuff on processing to share in the paper
+
+## Aggregating data at nodes
+Ok so we have nodes, and each 
+A nice alternative for next time could be to have an hex grid, nice geometric advantages.   
+Cannot convert our regular grid to hexagonal grid because nodes are in a regular grid, hexagonal requires offset at alternate rows.   
+
+Grid is obviously not aligned to a regular latitude longitude grid as distance between nodes would decrease moving away from the equator.  
+
+A custom projection Lambert Conformal Conical projection was designed (Marika Koukoula) with the following PROJ
+  
+```{r}
+myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80"
+```
+  
+The grid was used to extract the following Earth surface information:  
+
++ copernicus.csv 
+Dictionary with histogram of class frequency of Copernicus classes inside a 500 m area around nodes of grid (domain?).   
+Extracted using Google Earth Engine map/reduce over 2018 COPERNICUS land cover   (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_CORINE_V20_100m)   
+
++ hansen.zip (contains shp/shx/dbf/prj)   
+Percentiles [10,25,50,75,90] of tree canopy cover for year 2000, defined as canopy closure for all vegetation taller than 5m in height. 
+(https://developers.google.com/earth-engine/datasets/catalog/UMD_hansen_global_forest_change_2018_v1_6)
+Hansen, Potapov, Moore, Hancher et al. “High-resolution global maps of 21st-century forest cover change.” Science 342.6160 (2013): 850-853.
+
++ treeHeight_data.zip (contains shp/shx/dbf/prj)   
+Percentiles [10,25,50,75,90] of tree canopy height for year 2005, defined as canopy closure for all vegetation taller than 5m in height. 
+(https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
+ 
++ aspect.zip 
++ slope.zip 
++ terrainHeightDEM.zip (contains shp/shx/dbf/prj)   
+Average of SRTM DEM (90m resolution) -  Shuttle Radar Topography Mission (SRTM) was flown aboard the space shuttle Endeavour February 11-22, 2000. 
+Slope and aspect in degrees. Height is meters A.S.L.
+(https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
+
+
+For each node a square polygon was created.   The squares were uploaded to Google Earth Engine for processing raster products derived from satellite data.    
+
+
+```{r eval=FALSE}
+squares.intersecting.polys     <- st_intersects(squares, polygons with categories ) 
+squares.intersecting.polys.ids <-which (lengths(squares.intersecting.polys) > 0 )
+```
+ 
+
+
+```{r eval=FALSE}
+cl <- parallel::makeForkCluster(10)
+doParallel::registerDoParallel(cl)
+
+cut.Polygons.In.Squares <-
+  function(squares.intersecting.polys,
+           squares,
+           squares.intersecting.polys.ids) {
+    foreach(i = ints,
+            .packages = c("sf", "lwgeom"))  %dopar% {
+              geomes <- st_make_valid(categ.for.myproj[intersects.sparse[[i]],])
+              st_intersection(squares[i, ], geomes)
+            }
+  }
+
+cut.Polygons.In.Squares(squares.intersecting.polys,
+                        squares,
+                        squares.intersecting.polys.ids)
+
+parallel::stopCluster(cl)
+
+```
+ 
+
+### Forest area and forest categories   
+Italy is divided into regions and each region into provinces. We have a full cover of forest categories of two regions, Veneto and Friuli Venezia Giulia, and the province of Trento.   Categories slightly differ in classification, but discrepancies were merged into a single catogory.    
+
+ 

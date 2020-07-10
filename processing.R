@@ -1,24 +1,27 @@
 library(raster)
 library(sf) 
 library(sp)
+library(doParallel)
+library(foreach)
+library(bigstatsr)
+library(lwgeom)
 
 source("makeShape.R")
 rad2deg<-function(rad){ rad*180/pi}
 deg2rad<-function(deg){ deg/180*pi}
 cell_width<-500
 wfolder<-"/archivio/shared/geodati/vettoriali/vaia/Cerrai_WRF_grid/"
-
-## read CATEGORIE -----
-#categ.for<-shapefile("/archivio/shared/geodati/vettoriali/carte_forestali_merge_totale.shp")
-#saveRDS(categ.for, "categ.for.rds")
-categ.for<-readRDS( "categ.for.rds")
-
-
-## FROM NODES TO RECT TILES -----
 myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 
-nodes <- readRDS("nodes.RDS")
-nodes.myproj <-  nodes  %>% st_set_crs(4326)   %>% st_transform(myproj)
+## read CATEGORIE -----
+categ.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/catValidated_LCCcustom.shp")
+#categ.for.myproj <- categ.for %>% st_transform(myproj)
+#st_write(categ.for.myproj, "/archivio/shared/geodati/vettoriali/WRF_UConn/catValidated_LCCcustom.shp")
+
+## FROM NODES TO RECT TILES -----
+
+#nodes <- readRDS("nodes.RDS")
+#nodes.myproj <-  nodes  %>% st_set_crs(4326)   %>% st_transform(myproj)
 # 
 # nodes.sp <-  as.data.frame(st_coordinates( nodes))
 # names(nodes.sp)<-c("x", "y")
@@ -27,20 +30,51 @@ nodes.myproj <-  nodes  %>% st_set_crs(4326)   %>% st_transform(myproj)
 # saveRDS(nodes.sp, "nodes.sp")
 #nodes.sp<-readRDS("nodes.sp") 
 
-square.size<-500
-points<-as.data.frame(nodes.sp@coords)
+#square.size<-500
+#points<-as.data.frame( st_coordinates(nodes.myproj))
 
 #degr<-1.2065 
-squares<-processPoints(points , 500, rot = deg2rad(degr)  )
-crs(squares)<-CRS("+init=epsg:3034")
-shapefile(squares, sprintf("nodes.square.projected.rotated_%sdeg.shp", degr) , overwrite=T)
+#squares<-processPoints(points , 500  )
+#crs(squares)<-CRS(myproj)
+#shapefile(squares, sprintf("out/nodes.square.projected.shp") , overwrite=T)
 
-squares.6707<- spTransform(squares, CRS("+init=epsg:6707"))
-shapefile(squares, sprintf("nodes.square.epsg6707.rotated_%sdeg.shp", degr) , overwrite=T)
+squares<-st_read( sprintf("out/nodes.square.projected.shp") )
+  
+### find squares overlapping 
+squares.intersecting.polys<-st_intersects(squares, categ.for.myproj ) 
 
-squares.latlng<- spTransform(squares, CRS("+init=epsg:4326"))
-shapefile(squares, sprintf("nodes.square.latlng.rotated_%sdeg.shp", degr) , overwrite=T)
- 
+squares.intersecting.polys.ids<-which (lengths(squares.intersecting.polys) > 0 )
+
+
+cl <- parallel::makeForkCluster(6)
+doParallel::registerDoParallel(cl)
+
+cut.Polygons.In.Squares <-
+  function(squares.intersecting.polys,
+           squares,
+           squares.intersecting.polys.ids) {
+    foreach(i = ints,
+            .packages = c("sf", "lwgeom"))  %dopar% {
+              geomes <- st_make_valid(categ.for.myproj[intersects.sparse[[i]],])
+              st_intersection(squares[i, ], geomes)
+            }
+  }
+
+cut.Polygons.In.Squares(squares.intersecting.polys,
+                        squares,
+                        squares.intersecting.polys.ids)
+
+parallel::stopCluster(cl)
+
+
+
+
+# squares.6707<- spTransform(squares, CRS("+init=epsg:6707"))
+# shapefile(squares, sprintf("out/nodes.square.epsg6707.shp") , overwrite=T)
+# 
+# squares.latlng<- spTransform(squares, CRS("+init=epsg:4326"))
+# shapefile(squares, sprintf("out/nodes.square.latlng.shp", degr) , overwrite=T)
+#   
 
 # nodes.coords <-  as.data.frame(st_coordinates( nodes.projected))
 # names(nodes.coords)<-c("x", "y")
