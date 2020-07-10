@@ -19,16 +19,12 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Aggregating data at nodes
 A regular grid with 1 km spacing was used over the study area.   
 
-> **N.B.** A nice alternative for next time could be to have an hex grid, nice geometric advantages.   
+> **N.B.** A nice alternative for next time could be to have an hexagonal grid, which has several geometric advantages.   
   Cannot convert our regular grid to hexagonal grid because nodes are in a regular grid, hexagonal requires offset at alternate rows.   
 
 Grid is obviously not aligned to a regular latitude longitude grid as distance between nodes would decrease moving away from the equator.  
 
 A custom projection Lambert Conformal Conical projection was designed (Marika Koukoula) with the following PROJ
-  
-```{r}
-myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80"
-```
   
 
 
@@ -58,9 +54,108 @@ Average of SRTM DEM (90m resolution) -  Shuttle Radar Topography Mission (SRTM) 
 Slope and aspect in degrees. Height is meters A.S.L.
 (https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
 
+```{javascript eval=F} 
+ var getCentroid = function(feature){
+  return feature.centroid();
+};  
+
+// Apply an algorithm to an image.
+var slope = ee.Terrain.slope(srtm);
+var aspect = ee.Terrain.aspect(srtm);
+//var sub_domain = ee.FeatureCollection(domain.toList(50000) );
+//var sub_domain2 = ee.FeatureCollection(domain.toList(50000, 50000) );
+
+var domain_buffered = ee.FeatureCollection(domain.map(getBuffer));
+//var sub_domain_buffered2 = ee.FeatureCollection(sub_domain2.map(getBuffer));
+  
+var slope_raster =  slope.reduceRegions({
+  reducer: ee.Reducer.mean(),  
+  collection: domain_buffered
+});
+
+var aspect_raster =  aspect.reduceRegions({
+  reducer: ee.Reducer.mean(),  
+  collection: domain_buffered
+});
+var srtm_raster =  srtm.reduceRegions({
+  reducer: ee.Reducer.mean(),  
+  collection: domain_buffered
+});
+    
+//var sub_domain_buffered_mean_treeHeights2 =  canopyHeight.reduceRegions({
+//  reducer: ee.Reducer.percentile([10,25,50,75,90]),  
+//  collection: sub_domain_buffered2
+//}); 
+//var  treeHeight_Data = ee.FeatureCollection(sub_domain_buffered_mean_treeHeights.map(getCentroid));
+var  unBufferSlope = ee.FeatureCollection(slope_raster.map(getCentroid));
+var  unBufferAspect = ee.FeatureCollection(aspect_raster.map(getCentroid));
+var  unBufferDEM = ee.FeatureCollection(srtm_raster.map(getCentroid));
+
+//var treeHeight = treeHeight_Data.merge(treeHeight_Data2);
+ Export.table.toDrive({
+    collection: unBufferDEM,
+    description:'DEM',
+    fileFormat: 'SHP'
+  });
+ Export.table.toDrive({
+    collection: unBufferSlope,
+    description:'slope',
+    fileFormat: 'SHP'
+  });
+  
+  Export.table.toDrive({
+    collection: unBufferAspect,
+    description:'aspect',
+    fileFormat: 'SHP'
+  });
+ 
+```
+
 
 
 ### R-CRAN processing
+
+```{r message=F, echo=F, include=FALSE}
+library(raster)
+library(sf) 
+library(sp)  
+library(mapview)
+myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80"
+
+study.area<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/area.shp")
+if(file.exists("../squares.RDS")){
+  squares<-readRDS( "../squares.RDS")
+} else {
+  nodes <- readRDS("../nodes.RDS")
+  nodes.myproj <-  nodes  %>% st_set_crs(4326)   %>% st_transform(myproj)
+  
+  nodes.myproj2<-nodes.myproj[1:13,]
+  
+  nodes.myproj2<-st_buffer(nodes.myproj, 500, nQuadSegs = 1)
+  st_bbox_by_feature = function(x) {
+    x = st_geometry(x)
+    f <- function(y) st_as_sfc(st_bbox(y,), crs=myproj)
+    do.call("c", lapply(x, f))
+  }
+  
+    
+  squares<-st_bbox_by_feature(nodes.myproj2)
+  squares <- squares  %>% st_set_crs( myproj)
+}
+
+
+#saveRDS(squares, "../squares.RDS")
+#st_write(squares, "../out/squares.shp")
+```
+  
+#### Map of subset of study area 
+```{r message=F, echo=F }
+ss<- st_intersects(squares, st_buffer(study.area, 5) )
+squares.intersecting.polys.ids <-which (lengths(ss) > 0 )
+mapview(squares[squares.intersecting.polys.ids,], label = NULL ) # + mapview(st_centroid(squares[squares.intersecting.polys.ids,] ), label = NULL)
+# st_centroid(ss) %>% mm
+```
+
 
 ```{r eval=FALSE}
 squares.intersecting.polys     <- st_intersects(squares, polygons with categories ) 
@@ -70,20 +165,32 @@ squares.intersecting.polys.ids <-which (lengths(squares.intersecting.polys) > 0 
 
 ```{r eval=FALSE}
  
-  foreach(i = squares.intersecting.polys.ids,
+  function(squares.intersecting.polys,
+           categ.for.myproj, squares,
+           squares.intersecting.polys.ids) {
+    foreach(i = squares.intersecting.polys.ids,
             .packages = c("sf", "lwgeom"))  %dopar% {
               
               geomes <- st_make_valid(categ.for.myproj[squares.intersecting.polys[[i]],])
-              inters<-st_intersection(squares[i, ], geomes)
+              inters<-st_intersection(squares[i,], geomes)
+              area<-ifelse(length(inters)>0, sum(st_area(inters)), 0)
+              areas<-0
+              if(length(inters)>0) areas<- as.numeric(st_area(inters))
               
-              inters[["tot_area"]]<-sum(st_area(cut.Polygons.In.Squares.output[[1]]))
-              inters[["per_cover"]]<-sum(st_area(cut.Polygons.In.Squares.output[[1]]))/st_area(squares[i, ])
-              inters
+              inters[["tot_area"]]<-area
+              inters[["cover"]]<- area/as.numeric(st_area(squares[i,]))
+              
+              aa<-aggregate(areas, by=list(category=inters$categoria), FUN=sum)
+              
+              
+              inters[["mainCategory"]]<-as.character(aa$category[[which.max(aa$x)]])
+              inters[["mainCategory_cover"]]<-max(aa$x)/as.numeric(st_area(squares[i, ]))
             }
- 
+  }
 
 ```
  
+
 
 ### Forest area and forest categories   
 Italy is divided into regions and each region into provinces. We have a full cover of forest categories of two regions, Veneto and Friuli Venezia Giulia, and the province of Trento.   Categories slightly differ in classification, but discrepancies were merged into a single catogory.    
