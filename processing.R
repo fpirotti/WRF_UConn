@@ -46,22 +46,24 @@ squares.intersecting.polys<-st_intersects(squares, categ.for.myproj )
 squares.intersecting.polys.ids<-which (lengths(squares.intersecting.polys) > 0 )
 
 
-cl <- parallel::makeForkCluster(6)
+cl <- parallel::makeForkCluster(10)
 doParallel::registerDoParallel(cl)
 
 cut.Polygons.In.Squares <-
   function(squares.intersecting.polys,
-           squares,
+           squares, categ.for.myproj,
            squares.intersecting.polys.ids) {
-    foreach(i = ints,
+    foreach(i = squares.intersecting.polys.ids,
             .packages = c("sf", "lwgeom"))  %dopar% {
-              geomes <- st_make_valid(categ.for.myproj[intersects.sparse[[i]],])
+              
+              geomes <- st_make_valid(categ.for.myproj[squares.intersecting.polys[[i]],])
               st_intersection(squares[i, ], geomes)
+              
             }
   }
 
-cut.Polygons.In.Squares(squares.intersecting.polys,
-                        squares,
+cut.Polygons.In.Squares.output <- cut.Polygons.In.Squares(squares.intersecting.polys,
+                        squares, categ.for.myproj, 
                         squares.intersecting.polys.ids)
 
 parallel::stopCluster(cl)
