@@ -14,7 +14,11 @@ wfolder<-"/archivio/shared/geodati/vettoriali/vaia/Cerrai_WRF_grid/"
 myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 
 ## read CATEGORIE -----
-categ.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/catValidated_LCCcustom.shp")
+# categ.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/catValidated_LCCcustom.shp")
+# for ( i in  names(categ.for.myproj ) ){
+#   if( !(i %in% c("fid", "categoria", "geometry"))  ) categ.for.myproj[[i]]<-NULL
+# }
+
 #categ.for.myproj <- categ.for %>% st_transform(myproj)
 #st_write(categ.for.myproj, "/archivio/shared/geodati/vettoriali/WRF_UConn/catValidated_LCCcustom.shp")
 
@@ -38,32 +42,43 @@ categ.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/catVali
 #crs(squares)<-CRS(myproj)
 #shapefile(squares, sprintf("out/nodes.square.projected.shp") , overwrite=T)
 
-squares<-st_read( sprintf("out/nodes.square.projected.shp") )
-  
-### find squares overlapping 
-squares.intersecting.polys<-st_intersects(squares, categ.for.myproj ) 
+# squares<-st_read( sprintf("out/nodes.square.projected.shp") )
+#   
+# ### find squares overlapping 
+# squares.intersecting.polys<-st_intersects(squares, categ.for.myproj ) 
+# 
+# squares.intersecting.polys.ids<-which (lengths(squares.intersecting.polys) > 0 )
 
-squares.intersecting.polys.ids<-which (lengths(squares.intersecting.polys) > 0 )
 
-
-cl <- parallel::makeForkCluster(10)
+cl <- parallel::makeForkCluster(12)
 doParallel::registerDoParallel(cl)
 
 cut.Polygons.In.Squares <-
   function(squares.intersecting.polys,
-           squares, categ.for.myproj,
+           categ.for.myproj, squares,
            squares.intersecting.polys.ids) {
     foreach(i = squares.intersecting.polys.ids,
             .packages = c("sf", "lwgeom"))  %dopar% {
               
               geomes <- st_make_valid(categ.for.myproj[squares.intersecting.polys[[i]],])
-              st_intersection(squares[i, ], geomes)
+              inters<-st_intersection(squares[i,], geomes)
+              area<-ifelse(length(inters)>0, sum(st_area(inters)), 0)
+              areas<-0
+              if(length(inters)>0) areas<- as.numeric(st_area(inters))
               
+              inters[["tot_area"]]<-area
+              inters[["cover"]]<- area/as.numeric(st_area(squares[i,]))
+              
+              aa<-aggregate(areas, by=list(category=inters$categoria), FUN=sum)
+              
+              
+              inters[["mainCategory"]]<-as.character(aa$category[[which.max(aa$x)]])
+              inters[["mainCategory_cover"]]<-max(aa$x)/as.numeric(st_area(squares[i, ]))
             }
   }
 
 cut.Polygons.In.Squares.output <- cut.Polygons.In.Squares(squares.intersecting.polys,
-                        squares, categ.for.myproj, 
+                         categ.for.myproj, squares,
                         squares.intersecting.polys.ids)
 
 parallel::stopCluster(cl)

@@ -17,9 +17,10 @@ knitr::opts_chunk$set(echo = TRUE)
 # Some stuff on processing to share in the paper
 
 ## Aggregating data at nodes
-Ok so we have nodes, and each 
-A nice alternative for next time could be to have an hex grid, nice geometric advantages.   
-Cannot convert our regular grid to hexagonal grid because nodes are in a regular grid, hexagonal requires offset at alternate rows.   
+A regular grid with 1 km spacing was used over the study area.   
+
+> **N.B.** A nice alternative for next time could be to have an hex grid, nice geometric advantages.   
+  Cannot convert our regular grid to hexagonal grid because nodes are in a regular grid, hexagonal requires offset at alternate rows.   
 
 Grid is obviously not aligned to a regular latitude longitude grid as distance between nodes would decrease moving away from the equator.  
 
@@ -29,6 +30,12 @@ A custom projection Lambert Conformal Conical projection was designed (Marika Ko
 myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80"
 ```
   
+
+
+### Google Earth Engine processing
+
+The square polygons were uploaded to Google Earth Engine for processing raster products derived from satellite data.   
+
 The grid was used to extract the following Earth surface information:  
 
 + copernicus.csv 
@@ -52,8 +59,8 @@ Slope and aspect in degrees. Height is meters A.S.L.
 (https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
 
 
-For each node a square polygon was created.   The squares were uploaded to Google Earth Engine for processing raster products derived from satellite data.    
 
+### R-CRAN processing
 
 ```{r eval=FALSE}
 squares.intersecting.polys     <- st_intersects(squares, polygons with categories ) 
@@ -61,27 +68,19 @@ squares.intersecting.polys.ids <-which (lengths(squares.intersecting.polys) > 0 
 ```
  
 
-
 ```{r eval=FALSE}
-cl <- parallel::makeForkCluster(10)
-doParallel::registerDoParallel(cl)
-
-cut.Polygons.In.Squares <-
-  function(squares.intersecting.polys,
-           squares,
-           squares.intersecting.polys.ids) {
-    foreach(i = ints,
+ 
+  foreach(i = squares.intersecting.polys.ids,
             .packages = c("sf", "lwgeom"))  %dopar% {
-              geomes <- st_make_valid(categ.for.myproj[intersects.sparse[[i]],])
-              st_intersection(squares[i, ], geomes)
+              
+              geomes <- st_make_valid(categ.for.myproj[squares.intersecting.polys[[i]],])
+              inters<-st_intersection(squares[i, ], geomes)
+              
+              inters[["tot_area"]]<-sum(st_area(cut.Polygons.In.Squares.output[[1]]))
+              inters[["per_cover"]]<-sum(st_area(cut.Polygons.In.Squares.output[[1]]))/st_area(squares[i, ])
+              inters
             }
-  }
-
-cut.Polygons.In.Squares(squares.intersecting.polys,
-                        squares,
-                        squares.intersecting.polys.ids)
-
-parallel::stopCluster(cl)
+ 
 
 ```
  
