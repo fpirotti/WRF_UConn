@@ -2,6 +2,7 @@
 title: "Processing Nodes 4 VAIA"
 author: "Francesco Pirotti"
 date: "11/7/2020"
+bibliography: bib.bibtex
 output:
   html_document: 
     toc: true 
@@ -16,98 +17,118 @@ knitr::opts_chunk$set(echo = TRUE)
 
 # Some stuff on processing to share in the paper
 
-## Aggregating data at nodes
-A regular grid with 1 km spacing was used over the study area.   
+ 
+### Forest DAMAGES layer
+The objective is to predict impact of wind over forest. Training and validation was done over areas that were defined over areas that were damaged from the VAIA storm event.  
 
-> **N.B.** A nice alternative for next time could be to have an hexagonal grid, which has several geometric advantages.   
-  Cannot convert our regular grid to hexagonal grid because nodes are in a regular grid, hexagonal requires offset at alternate rows.   
+The data is extracted from the windthrow database that was created for the paper by  [[@Forzieri2020]](https://essd.copernicus.org/articles/12/257/2020/) linking to an [open database](https://figshare.com/articles/A_spatially-explicit_database_of_wind_disturbances_in_European_forests_over_the_period_2000-2018/9555008) containing polygons of damaged areas. It must be noted that some damaged areas were left out because only slightly damaged, or with small areas or outright missed during the visual interpretation process. Therefore we should be careful to conclude that all areas not covered by the polygons are un-damaged. Nevertheless these data provide us with samples of damaged areas. 
+
+Classification can provide us with a binary result: positives/negatives = damaged/undamaged forest areas - with the following alternative outputs per each unit:
+
++ **true  positives** = classified as damaged  correctly
++ **false positives** = classified as damaged  but not true
++ **true negatives** =  classified as undamaged  correctly
++ **false negatives** = classified as undamaged  but are actually damaged
+
+The units 
+
+
+## Aggregating data at nodes
+A regular grid with 1 km spacing was used over the study area, for a total of 97524 nodes.   
+
+> **N.B.** A nice alternative  could be to have an hexagonal grid, which has several geometric advantages.   
+  Cannot convert our regular grid to hexagonal grid because  hexagonal requires offset at alternate rows.   
 
 Grid is obviously not aligned to a regular latitude longitude grid as distance between nodes would decrease moving away from the equator.  
 
-A custom projection Lambert Conformal Conical projection was designed (Marika Koukoula) with the following PROJ
-  
+A custom projection Lambert Conformal Conical projection was designed (Marika Koukoula) with the following PROJ 
+ 
 
+```{r message=F }
+myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80"
+
+```
+
+Each node was expanded to a square
+
+```{r eval=FALSE} 
+  
+  st_bbox_by_feature = function(x) {
+    x = st_geometry(x)
+    f <- function(y) st_as_sfc(st_bbox(y,), crs=myproj)
+    do.call("c", lapply(x, f))
+  }
+  
+    
+  nodes.myproj.buffered<-st_buffer(nodes.myproj, 500, nQuadSegs = 1)
+  squares<-st_bbox_by_feature(nodes.myproj2)
+  squares <- squares  %>% st_set_crs( myproj)
+  
+```
+
+The square lattice was used for further processing with Google Earth Engine and with R.
 
 ### Google Earth Engine processing
 
-The square polygons were uploaded to Google Earth Engine for processing raster products derived from satellite data.   
+The 97524 square polygons were uploaded to Google Earth Engine for processing raster products derived from satellite data.   
 
-The grid was used to extract the following Earth surface information:  
+The grid was used to extract  of the following two files:  
 
-+ copernicus.csv 
-Dictionary with histogram of class frequency of Copernicus classes inside a 500 m area around nodes of grid (domain?).   
-Extracted using Google Earth Engine map/reduce over 2018 COPERNICUS land cover   (https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_CORINE_V20_100m)   
++  **copernicus.csv**    
+Dictionary with histogram of class frequency of Copernicus classes inside the 1 km x 1 km area square around the nodes of the grid (domain?). Extracted using Google Earth Engine map/reduce over [2018 COPERNICUS land cover](https://developers.google.com/earth-engine/datasets/catalog/COPERNICUS_CORINE_V20_100m)   
 
-+ hansen.zip (contains shp/shx/dbf/prj)   
-Percentiles [10,25,50,75,90] of tree canopy cover for year 2000, defined as canopy closure for all vegetation taller than 5m in height. 
-(https://developers.google.com/earth-engine/datasets/catalog/UMD_hansen_global_forest_change_2018_v1_6)
-Hansen, Potapov, Moore, Hancher et al. “High-resolution global maps of 21st-century forest cover change.” Science 342.6160 (2013): 850-853.
++  **nodesWithGEEvars_crsXXXX**    
+  XXXX = 4326 (latitude longitude in WGS88) or
+  XXXX=LCCcustom (custom Lambert Conformal Conical <a href="#Aggregating_data_at_nodes" >see here</a> ) ) 
+  with percentiles [10,25,50,75,90] of the following as attributes. 
+  A shapefile with nodes and the five percentiles for each of the following attributes.
+  
+  
+      + Tree canopy cover for year 2000, defined as canopy closure for all vegetation taller than 5m in height. (https://developers.google.com/earth-engine/datasets/catalog/UMD_hansen_global_forest_change_2018_v1_6) Hansen, Potapov, Moore, Hancher et al. “High-resolution global maps of 21st-century forest cover change.” Science 342.6160 (2013): 850-853.
 
-+ treeHeight_data.zip (contains shp/shx/dbf/prj)   
-Percentiles [10,25,50,75,90] of tree canopy height for year 2005, defined as canopy closure for all vegetation taller than 5m in height. 
-(https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
+    + Tree canopy height for year 2005, defined as canopy closure for all vegetation taller than 5m in height. (https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
  
-+ aspect.zip 
-+ slope.zip 
-+ terrainHeightDEM.zip (contains shp/shx/dbf/prj)   
-Average of SRTM DEM (90m resolution) -  Shuttle Radar Topography Mission (SRTM) was flown aboard the space shuttle Endeavour February 11-22, 2000. 
-Slope and aspect in degrees. Height is meters A.S.L.
-(https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
+    + Aspect
 
-```{javascript eval=F} 
- var getCentroid = function(feature){
+    + Slope 
+
+    + DEM (Height) 
+  
+    The last three from the SRTM mission. Slope and aspect in degrees. Height is meters A.S.L. (https://agupubs.onlinelibrary.wiley.com/doi/abs/10.1029/2011JG001708) 
+
+The following code was used in GEE.
+
+```{python eval=F} 
+
+var getCentroid = function(feature){
   return feature.centroid();
 };  
+ 
+var slp = ee.Terrain.slope(srtm).clip(domain_buffered.geometry().bounds()) ;
+var asp = ee.Terrain.aspect(srtm).clip(domain_buffered.geometry().bounds()) ;
+var dem =  srtm.clip(domain_buffered.geometry().bounds()) ;
+ 
+var image = hansen.select(['treecover2000']).rename(['cCov'])
+            .addBands(canopyHeight.rename(['cHgt']))
+            .addBands(slp.rename(['slp']))
+            .addBands(asp.rename(['asp']))
+            .addBands(dem.rename(['dem'])) ;
 
-// Apply an algorithm to an image.
-var slope = ee.Terrain.slope(srtm);
-var aspect = ee.Terrain.aspect(srtm);
-//var sub_domain = ee.FeatureCollection(domain.toList(50000) );
-//var sub_domain2 = ee.FeatureCollection(domain.toList(50000, 50000) );
 
-var domain_buffered = ee.FeatureCollection(domain.map(getBuffer));
-//var sub_domain_buffered2 = ee.FeatureCollection(sub_domain2.map(getBuffer));
-  
-var slope_raster =  slope.reduceRegions({
-  reducer: ee.Reducer.mean(),  
-  collection: domain_buffered
-});
+var  treeCover =  image.reduceRegions({
+  reducer: ee.Reducer.percentile([10,25,50,75,90]),  
+  collection:domain_buffered 
+}); 
+ 
 
-var aspect_raster =  aspect.reduceRegions({
-  reducer: ee.Reducer.mean(),  
-  collection: domain_buffered
-});
-var srtm_raster =  srtm.reduceRegions({
-  reducer: ee.Reducer.mean(),  
-  collection: domain_buffered
-});
-    
-//var sub_domain_buffered_mean_treeHeights2 =  canopyHeight.reduceRegions({
-//  reducer: ee.Reducer.percentile([10,25,50,75,90]),  
-//  collection: sub_domain_buffered2
-//}); 
-//var  treeHeight_Data = ee.FeatureCollection(sub_domain_buffered_mean_treeHeights.map(getCentroid));
-var  unBufferSlope = ee.FeatureCollection(slope_raster.map(getCentroid));
-var  unBufferAspect = ee.FeatureCollection(aspect_raster.map(getCentroid));
-var  unBufferDEM = ee.FeatureCollection(srtm_raster.map(getCentroid));
-
-//var treeHeight = treeHeight_Data.merge(treeHeight_Data2);
+var  unBuffer = ee.FeatureCollection(treeCover.map(getCentroid));
+ 
  Export.table.toDrive({
-    collection: unBufferDEM,
-    description:'DEM',
+    collection: unBuffer,
+    description:'mapRedVars',
     fileFormat: 'SHP'
   });
- Export.table.toDrive({
-    collection: unBufferSlope,
-    description:'slope',
-    fileFormat: 'SHP'
-  });
-  
-  Export.table.toDrive({
-    collection: unBufferAspect,
-    description:'aspect',
-    fileFormat: 'SHP'
-  });
+
  
 ```
 
@@ -120,7 +141,6 @@ library(raster)
 library(sf) 
 library(sp)  
 library(mapview)
-myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80"
 
 study.area<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/area.shp")
 if(file.exists("../squares.RDS")){
@@ -195,4 +215,4 @@ squares.intersecting.polys.ids <-which (lengths(squares.intersecting.polys) > 0 
 ### Forest area and forest categories   
 Italy is divided into regions and each region into provinces. We have a full cover of forest categories of two regions, Veneto and Friuli Venezia Giulia, and the province of Trento.   Categories slightly differ in classification, but discrepancies were merged into a single catogory.    
 
- 
+
