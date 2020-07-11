@@ -7,6 +7,7 @@ library(bigstatsr)
 library(bench)
 library(lwgeom)
 library(mapview)
+library(bigmemory) 
  
 rad2deg<-function(rad){ rad*180/pi}
 deg2rad<-function(deg){ deg/180*pi}
@@ -16,13 +17,13 @@ myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_
 
 ## read CATEGORIE -----
 categ.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/catValidated_LCCcustom.shp")
- 
-
-damages.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/vaia/paperForzieriVAIA_crsLCCcustom.shp")
 for ( i in  names(categ.for.myproj ) ){
   if( !(i %in% c("fid", "categoria", "geometry"))  ) categ.for.myproj[[i]]<-NULL
-}
- 
+} 
+
+damages.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/vaia/paperForzieriVAIA_crsLCCcustom.shp")
+
+damage.bbox<-st_as_sfc(st_bbox(damages.for.myproj))
 nodes <- st_read("out/fromGEEreducedVars/nodesWithGEEvars_crsLCCcustom.shp", 
                  query="SELECT FID FROM nodesWithGEEvars_crsLCCcustom")
 
@@ -44,57 +45,110 @@ st_bbox_by_feature = function(x) {
   
 squares <-st_bbox_by_feature(nodes.myproj2)
 squares <- squares  %>% st_set_crs( myproj)
-
+#squares.sf<- st_as_sf(squares, data.frame(FID=nodes.myproj2$FID) ) 
  
- squares.intersecting.polys<-st_intersects(squares, categ.for.myproj ) 
- 
+ squares.intersecting.polys<-st_intersects(squares, categ.for.myproj )  
  squares.intersecting.polys.ids<-which (lengths(squares.intersecting.polys) > 0 )
+ 
+ squares.intersecting.polys.dmg<-st_intersects(squares, damages.for.myproj )  
+ squares.intersecting.polys.dmg.ids<-which (lengths(squares.intersecting.polys.dmg) > 0 )
 
+ squares.intersecting.eitherOr.IDS<-union(squares.intersecting.polys.dmg.ids, squares.intersecting.polys.ids)
  ##squares.intersecting.polys.ids<-squares.intersecting.polys.ids[1:100] 
  
+ ##shared matrix for output
  
- cl <- parallel::makeForkCluster(4)
-doParallel::registerDoParallel(cl)
-
-cut.Polygons.In.Squares <-
-  function(squares.intersecting.polys,
-           categ.for.myproj, categ.for.myproj, squares,
-           squares.intersecting.polys.ids) {
-    
-    foreach(i = squares.intersecting.polys.ids,
-            .packages = c("sf", "lwgeom"))  %dopar% {
-              
-              geomes <- st_make_valid(categ.for.myproj[squares.intersecting.polys[[i]],])
-              #inters<-st_intersection(squares[i,], geomes)
-              inters<-st_intersection(geomes, squares[i,])
-      
-              area<-0  
-              areas<-0
-              if(length(inters)>0){
-                area <- as.numeric(sum(st_area(inters)))
-                areas<- as.numeric(st_area(inters))
-              } 
-              
-              inters[["cat_tot_area"]]<-area
-              inters[["cat_perc_cov"]]<- area/1e6
-              
-              aa<-aggregate(areas, by=list(category=inters$categoria), FUN=sum)
-              
-              
-              inters[["mainCat"]]<-as.character(aa$category[[which.max(aa$x)]])
-              inters[["mainCat_perc_cov"]]<-max(aa$x)/1e6
-              inters
-            }
-  }
-
-cut.Polygons.In.Squares.output <- cut.Polygons.In.Squares(squares.intersecting.polys,
-                         categ.for.myproj, categ.for.myproj, squares,
-                        squares.intersecting.polys.ids)
-
+ 
+ 
+cl <- parallel::makeForkCluster(14)
+ doParallel::registerDoParallel(cl)
+ # 
+ # cut.Polygons.In.Squares <-
+ #   function(squares.intersecting.polys,
+ #            squares.intersecting.polys.dmg,
+ #            categ.for.myproj, damages.for.myproj, squares,
+ #            squares.intersecting.eitherOr.IDS) {
+ #     
+     mat3 <- FBM(length(squares), 6, type="integer", init=NA)
+     
+     options(warn = -1)
+     remove(i)
+     
+     system.time(
+     tmp <- foreach(i = squares.intersecting.eitherOr.IDS,
+             .packages = c("sf", "lwgeom"))  %dopar%  {
+               
+               mat3[i,1]<- i
+               if(length(squares.intersecting.polys[[i]]) > 0){
+                 
+                 geomes <-     sf::st_make_valid(categ.for.myproj[squares.intersecting.polys[[i]],]) 
+                 inters<- sf::st_intersection(geomes, squares[i,])
+                 
+                 area<-0  
+                 areas<-0
+                 if(length(inters)>0){
+                   areas<- as.numeric(sf::st_area(inters))
+                   area <- sum(areas) 
+                 }  
+                 mat3[i,2]<- as.integer(area)
+                 
+                 aa<-aggregate(areas, by=list(category=inters$categoria), FUN=sum) 
+                 
+                 mat3[i,3]<-as.integer(aa$category[[which.max(aa$x)]])
+                 mat3[i,4]<-as.integer(max(aa$x))
+                 
+               }  
+               
+               
+               if( length(squares.intersecting.polys.dmg[[i]]) > 0 ){ 
+                 geomes.dmg <- sf::st_make_valid(damages.for.myproj[squares.intersecting.polys.dmg[[i]],]) 
+                 inters<-sf::st_intersection(geomes.dmg, squares[i,])
+                 
+                 area<-0   
+                 if(length(inters)>0){ 
+                   damage_deg <- ifelse(inters$Damage_deg < 0, 1, inters$Damage_deg ) 
+                   area <- sum(as.numeric(sf::st_area(inters))) 
+                   warea <- sum(as.numeric(sf::st_area(inters)*damage_deg)) 
+                 }  
+                 
+                 mat3[i,5] <- area 
+                 mat3[i,6] <- warea  
+                 
+               }
+               
+               NULL
+             }
+     )
+ 
+ 
+ options(warn = 0)
+ 
 parallel::stopCluster(cl)
 
 
-saveRDS(cut.Polygons.In.Squares.output, "cut.Polygons.In.Squares.output.rds")
+
+final.nodes <- st_read("out/fromGEEreducedVars/nodesWithGEEvars_crsLCCcustom.shp")
+
+mat4<-mat3[]
+colnames(mat4)<-c("rown", "cat_Cov", "mainCat", "mainCat_Cov", "dmg_Cov", "dmg_wCov")
+dt4<-as.data.frame(mat4)
+final.nodes.binded<-st_sf(final.nodes, dt4)
+
+final.nodes.binded
+st_write(final.nodes.binded, "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crsLCCcustom.shp")
+
+st_write(final.nodes.binded %>% st_set_crs( 4326),
+         "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crs4326.shp")
+
+tt<-sapply( names(final.nodes.binded), function(x){
+  if(x!="geometry")
+   sprintf("<tr><td>%s</td><td>%s</td></tr>", x, class(final.nodes.binded[[x]]) )
+  else 
+    ""
+})
+
+sprintf("<table><th>Column name</th><th>Type</th>%s</table>",
+        paste0(collapse ="", tt) )
 
 # squares.6707<- spTransform(squares, CRS("+init=epsg:6707"))
 # shapefile(squares, sprintf("out/nodes.square.epsg6707.shp") , overwrite=T)
