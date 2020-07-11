@@ -148,59 +148,105 @@ var  unBuffer = ee.FeatureCollection(treeCover.map(getCentroid));
 
 Processing 97524 squares intersecting them with 121924 polygons of forest category and 7416 polygons of damage areas too 120 seconds with 14 CPU threads parallel tasking (not sure if this is the correct terminology - not a parallel guru).
 
-#### Map of subset of study area 
+#### Variables 
 
-```{r message=F,   echo=F}
+Table with variables: 
+**asp**=aspect, **slp**=slope, **dem**=DEM, **cHgt**=canopy height, **cCv**=canopy cover, **mainCat**=main category, **mnCt_Cv**=main category cover, **dmg_Cov**=damage cover, **dmg_wCov**=damage weighted cover
 
-library(raster)
-library(sf) 
-library(sp)  
+All cover values are in m^2 and can be converted to relative cover dividing by the square area (1 km^2).
+
+
+```{r message=F, comment=F, echo=F}
+ 
+library(sf)  
+library(knitr)
 library(mapview)
+library(kableExtra)
 
-study.area<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/area.shp")
+
+#study.area<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/area.shp")
 final.file<-"../out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crsLCCcustom.shp"
-if(file.exists(final.file) && !file.exists("Units.rds")){
-  squares<-readRDS( "../squares.RDS")
-  damage.bbox<-readRDS("../damage.bbox.rds")
-  final.nodes.binded <- st_read(final.file)
- 
- 
-ss<- st_intersects(final.nodes.binded, study.area )
-nodes.intersecting.polys.ids <-which (lengths(ss) > 0 )
-Units<-final.nodes.binded[nodes.intersecting.polys.ids,]
-saveRDS(Units,"Units.rds")
 
-} else {
-  Units<-readRDS("Units.rds")
-  mapview(Units, alpha = 0, zcol = "dmg_wCv" )
+if(file.exists(final.file) && 
+   (!file.exists("Units.rds") || 
+    !file.exists("final.nodes.binde.rds") || 
+    !file.exists("damages.clipped.rds") ) ){
+
+   
+  saveRDS(st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/area.shp"), "../study.area.rds")
+ 
+  saveRDS( st_read(final.file), "final.nodes.binde.rds")  
+  
+  ss<- st_intersects(final.nodes.binded, study.area )
+  
+  geomes <-     sf::st_make_valid(damages.for.myproj) 
+  
+  saveRDS( st_intersection(geomes, study.area ), "damages.clipped.rds")  
+  
+  nodes.intersecting.polys.ids <-which (lengths(ss) > 0 )
+  Units<-final.nodes.binded[nodes.intersecting.polys.ids,]
+  Units.sq<-  cbind( squares[nodes.intersecting.polys.ids,], Units)
+  saveRDS(Units,"Units.rds")
+  saveRDS(Units.sq,"Units.sq.rds")
+  
 } 
+
+  squares<-readRDS( "../squares.RDS")
+  Units.sq<-readRDS( "Units.sq.rds")
+  Damage <- readRDS("damages.clipped.rds")
+  final.nodes.binded<-readRDS("final.nodes.binde.rds")
+  Units<-readRDS("Units.rds")
+  
+tt<-lapply( names(final.nodes.binded), function(x){
+  if( !(x %in% c("FID", "mainCat", "rown", "geometry")))
+    list(`Column Name`=x, Type=class(final.nodes.binded[[x]]), 
+         Min=round( min(final.nodes.binded[[x]], na.rm =T ), 2), 
+         Mean=round( mean(final.nodes.binded[[x]], na.rm =T ), 2), 
+         Max=round( max(final.nodes.binded[[x]], na.rm =T ), 2) )
+  else 
+    NULL
+})
+
+
+
+dtt<-data.table::rbindlist(tt)
+
+dtt<-dtt[order(dtt$`Column Name`),]
+
+dttp<-dtt %>%
+  kable(format.args = list(big.mark = " ")) %>%
+  kable_styling()
+
+dttp
+
+
+
+ 
 # + mapview(st_centroid(squares[squares.intersecting.polys.ids,] ), label = NULL)
 # st_centroid(ss) %>% mm
 ```
 
+### Map of subset of study area 
 
-```{r eval=FALSE,  message=F,   echo=F}
- squares.intersecting.polys<-st_intersects(squares, categ.for.myproj )  
- squares.intersecting.polys.ids<-which (lengths(squares.intersecting.polys) > 0 )
+```{r   message=F,   echo=F}
+
+Damage$Damage_deg [ Damage$Damage_deg<0 ] <- 1
+Units.sq$dmg_wCv <- round(Units.sq$dmg_wCv/1000000*100, 1)
+Units.sq$dmg_Cov <- round(Units.sq$dmg_Cov/1000000*100, 1)
+
+label <- sprintf("Damage: Cover (%%): %s |
+Weighted Cover (%%): %s<br>",
+                 Units.sq$dmg_Cov,
+                 Units.sq$dmg_wCv)
+#mapview(Units, alpha = 0, na.color=NULL, zcol = "dmg_wCv" ) +
+
+mapview(Damage, alpha = 0, na.color=NA, label=NULL, at = seq(0, 1, 0.2),  zcol = "Damage_deg" )  +
+mapview(Units.sq, alpha = 0, na.color="#FFFFFFFF", label= label, lwd=0, zcol ="dmg_wCv" ,
+        at = seq(0, 100, 10), legend = TRUE) 
  
- squares.intersecting.polys.dmg<-st_intersects(squares, damages.for.myproj )  
- squares.intersecting.polys.dmg.ids<-which (lengths(squares.intersecting.polys.dmg) > 0 )
-
- squares.intersecting.eitherOr.IDS<-union(squares.intersecting.polys.dmg.ids,  squares.intersecting.polys.ids)
-
- ## =====================================
  
 
 
-tt<-sapply( names(final.nodes.binded), function(x){
-  if(x!="geometry")
-   sprintf("<tr><td>%s</td><td>%s</td></tr>", x, class(final.nodes.binded[[x]]) )
-  else 
-    ""
-})
-
-sprintf("<table><th>Column name</th><th>Type</th>%s</table>",
-        paste0(collapse ="", tt) )
 
 ```
  

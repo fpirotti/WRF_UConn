@@ -132,23 +132,20 @@ final.nodes <- st_read("out/fromGEEreducedVars/nodesWithGEEvars_crsLCCcustom.shp
 mat4<-mat3[]
 colnames(mat4)<-c("rown", "cat_Cov", "mainCat", "mainCat_Cov", "dmg_Cov", "dmg_wCov")
 dt4<-as.data.frame(mat4)
-final.nodes.binded<-st_sf(final.nodes, dt4)
-
-final.nodes.binded
-st_write(final.nodes.binded, "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crsLCCcustom.shp")
+final.nodes.binded<- st_bind_cols(final.nodes, dt4)
+ 
+st_write(final.nodes.binded, "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crsLCCcustom.shp", append = F)
 
 st_write(final.nodes.binded %>% st_set_crs( 4326),
-         "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crs4326.shp")
+         "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crs4326.shp", app)
 
 tt<-sapply( names(final.nodes.binded), function(x){
   if(x!="geometry")
-   sprintf("<tr><td>%s</td><td>%s</td></tr>", x, class(final.nodes.binded[[x]]) )
+    sprintf("<tr><td>%s</td><td>%s</td></tr>", x, class(final.nodes.binded[[x]]) )
   else 
     ""
 })
-
-sprintf("<table><th>Column name</th><th>Type</th>%s</table>",
-        paste0(collapse ="", tt) )
+ 
 
 # squares.6707<- spTransform(squares, CRS("+init=epsg:6707"))
 # shapefile(squares, sprintf("out/nodes.square.epsg6707.shp") , overwrite=T)
