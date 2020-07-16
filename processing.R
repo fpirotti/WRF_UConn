@@ -16,7 +16,7 @@ wfolder<-"/archivio/shared/geodati/vettoriali/vaia/Cerrai_WRF_grid/"
 myproj<-"+proj=lcc +lat_1=45.827  +lat_2=45.827  +lat_0=45.827 +lon_0=11.625 +x_0=4000000 +y_0=2800000 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
 
 ## read CATEGORIE -----
-categ.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/catValidated_LCCcustom.shp")
+categ.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/categorie_forestali_triveneto_crsCustomLCC.shp")
 for ( i in  names(categ.for.myproj ) ){
   if( !(i %in% c("fid", "categoria", "geometry"))  ) categ.for.myproj[[i]]<-NULL
 } 
@@ -34,7 +34,7 @@ nodes <- st_read("out/fromGEEreducedVars/nodesWithGEEvars_crsLCCcustom.shp",
 #saveRDS(nodes,"nodes.RDS")
 #shapefile(st_as_sf(data.frame(geom=squares)), sprintf("out/nodes.square.projected.shp") , overwrite=T)
  
-nodes.myproj2<-st_buffer(nodes, 500, nQuadSegs = 1)
+nodes.buffered<-st_buffer(nodes, 500, nQuadSegs = 1)
 
 st_bbox_by_feature = function(x) {
   x = st_geometry(x)
@@ -43,7 +43,7 @@ st_bbox_by_feature = function(x) {
 }
 
   
-squares <-st_bbox_by_feature(nodes.myproj2)
+squares <-st_bbox_by_feature(nodes.buffered)
 squares <- squares  %>% st_set_crs( myproj)
 #squares.sf<- st_as_sf(squares, data.frame(FID=nodes.myproj2$FID) ) 
  
@@ -139,35 +139,3 @@ st_write(final.nodes.binded, "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_cr
 st_write(final.nodes.binded %>% st_set_crs( 4326),
          "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crs4326.shp", app)
 
-tt<-sapply( names(final.nodes.binded), function(x){
-  if(x!="geometry")
-    sprintf("<tr><td>%s</td><td>%s</td></tr>", x, class(final.nodes.binded[[x]]) )
-  else 
-    ""
-})
- 
-
-# squares.6707<- spTransform(squares, CRS("+init=epsg:6707"))
-# shapefile(squares, sprintf("out/nodes.square.epsg6707.shp") , overwrite=T)
-# 
-# squares.latlng<- spTransform(squares, CRS("+init=epsg:4326"))
-# shapefile(squares, sprintf("out/nodes.square.latlng.shp", degr) , overwrite=T)
-#   
-
-# nodes.coords <-  as.data.frame(st_coordinates( nodes.projected))
-# names(nodes.coords)<-c("x", "y")
-# coordinates(nodes.coords) <-  ~x+y
-# 
-# nodes.hex<-sp::HexPoints2SpatialPolygons(nodes.coords, 1000)
-# saveRDS(nodes.hex, "nodes.hex.projected")
-# nodes.hex.projected<-readRDS("nodes.hex.projected")
-# nodes.hex.projected <-  st_as_sf(nodes.hex.projected)  %>% st_set_crs(3034)  
-# st_write(nodes.hex.projected, "nodes.hex.projected.shp", append=F)
-# 
-# nodes.hex.latlng <-  st_as_sf(nodes.hex.projected)  %>% st_set_crs(3034)   %>% st_transform(4326)
-# saveRDS(nodes.hex.latlng, "nodes.hex.latlng")
-# nodes.hex.latlng<-readRDS("nodes.hex.latlng")
-# 
-# st_write(nodes.hex.latlng, "nodes.hex.latlng.shp", append=F)
-
- 
