@@ -21,7 +21,7 @@ for ( i in  names(categ.for.myproj ) ){
   if( !(i %in% c("fid", "categoria", "geometry"))  ) categ.for.myproj[[i]]<-NULL
 } 
 
-damages.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/vaia/paperForzieriVAIA_crsLCCcustom.shp")
+damages.for.myproj<-st_read("/archivio/shared/geodati/vettoriali/vaia/paperForzieriVAIA_crsLCCcustom_corrected.shp")
 
 damage.bbox<-st_as_sfc(st_bbox(damages.for.myproj))
 nodes <- st_read("out/fromGEEreducedVars/nodesWithGEEvars_crsLCCcustom.shp", 
@@ -136,6 +136,7 @@ final.nodes.binded<- st_bind_cols(final.nodes, dt4)
  
 st_write(final.nodes.binded, "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crsLCCcustom.shp", append = F)
 
-st_write(final.nodes.binded %>% st_set_crs( 4326),
-         "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crs4326.shp", app)
+st_write(final.nodes.binded %>% st_transform(4326),
+         "out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crs4326.shp", append=F)
+
 

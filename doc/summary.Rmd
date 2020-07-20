@@ -164,7 +164,7 @@ library(mapview)
 library(kableExtra)
 
 
-#study.area<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/area.shp")
+study.area<-st_read("/archivio/shared/geodati/vettoriali/WRF_UConn/area.shp")
 final.file<-"../out/fromGEEreducedVars/nodesWithGEEvars_andRvar_crsLCCcustom.shp"
 
 if(file.exists(final.file) && 
@@ -231,17 +231,17 @@ dttp
 ```{r   message=F,   echo=F}
 
 Damage$Damage_deg [ Damage$Damage_deg<0 ] <- 1
-Units.sq$dmg_wCv <- round(Units.sq$dmg_wCv/1000000*100, 1)
+Units.sq$dmg_wCov   <- round(Units.sq$dmg_wCov/1000000*100, 1)
 Units.sq$dmg_Cov <- round(Units.sq$dmg_Cov/1000000*100, 1)
 
 label <- sprintf("Damage: Cover (%%): %s |
 Weighted Cover (%%): %s<br>",
                  Units.sq$dmg_Cov,
-                 Units.sq$dmg_wCv)
+                 Units.sq$dmg_wCov)
 #mapview(Units, alpha = 0, na.color=NULL, zcol = "dmg_wCv" ) +
 
 mapview(Damage, alpha = 0, na.color=NA, label=NULL, at = seq(0, 1, 0.2),  zcol = "Damage_deg" )  +
-mapview(Units.sq, alpha = 0, na.color="#FFFFFFFF", label= label, lwd=0, zcol ="dmg_wCv" ,
+mapview(Units.sq, alpha = 0, na.color="#FFFFFFFF", label= label, lwd=0, zcol ="dmg_wCov" ,
         at = seq(0, 100, 10), legend = TRUE) 
  
  
